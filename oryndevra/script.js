@@ -70,7 +70,7 @@ if(typeof document!=='undefined')(function(){
 const $=s=>document.getElementById(s),grid=$('grid'),detail=$('detail'),dbody=$('dbody'),qi=$('q'),tpl=document.createElement('template');
 const idle=window.requestIdleCallback?f=>requestIdleCallback(f,{timeout:1500}):f=>setTimeout(f,60);
 const hasIO='IntersectionObserver' in window;
-const St={f:{},q:'',cur:'1',queue:[],busy:false,want:false,gen:0};
+const St={f:{},q:'',cur:'1',queue:[],busy:false,want:false,dry:false,gen:0};
 let sent=null;const spacer=document.createElement('div');spacer.className='spacer';spacer.hidden=true;spacer.innerHTML='<button type="button" data-home>Return to the first horizon</button>';
 const draw=el=>{try{el.innerHTML=art(el.closest('.card').dataset.id)}catch(e){}el.dataset.d=1};
 const artIO=hasIO?new IntersectionObserver(es=>{for(const e of es)if(e.isIntersecting){artIO.unobserve(e.target);draw(e.target)}},{rootMargin:'500px 0px'}):null;
@@ -84,15 +84,21 @@ const card=p=>'<article class="card" tabindex="0" role="button" data-id="'+p.id+
 function render(b){tpl.innerHTML=b.map(card).join('');const arts=[...tpl.content.querySelectorAll('.art')];grid.appendChild(tpl.content);
 for(const a of arts)artIO?artIO.observe(a):draw(a);
 const k=grid.children;if(k.length>260){sent=k[k.length-260];sentIO?sentIO.observe(sent):0}}
-function prefill(tok){if(St.busy||St.queue.length>=300||tok!==St.gen)return;St.busy=true;scan(300,tok).then(b=>{if(tok!==St.gen)return;St.busy=false;if(b)St.queue.push(...b);if(St.want&&St.queue.length)flush()})}
-function flush(){if(!St.queue.length){St.want=true;prefill(St.gen);return}St.want=false;const b=St.queue;St.queue=[];render(b);const g=St.gen;idle(()=>prefill(g));idle(prune)}
+function prefill(tok){if(St.busy||St.queue.length>=300||tok!==St.gen)return;St.busy=true;scan(300,tok).then(b=>{if(tok!==St.gen)return;St.busy=false;if(b){if(!b.length)St.dry=true;for(const p of b)St.queue.push(p)}if(St.want&&St.queue.length)flush()}).catch(()=>{St.busy=false})}
+function flush(){if(!St.queue.length){St.want=true;prefill(St.gen);return}St.want=false;const b=St.queue;St.queue=[];try{render(b)}catch(e){console.error(e)}const g=St.gen;idle(()=>prefill(g));idle(prune);idle(check)}
 /* bound DOM size: drop far-above cards and replace them with a spacer so the scroll position never moves */
 function prune(){const k=grid.children;if(k.length<1500)return;if(k[300].getBoundingClientRect().bottom>-200)return;const keep=k[301],y0=keep.getBoundingClientRect().top;let sh=parseFloat(spacer.style.height)||0;spacer.hidden=false;
 for(let i=0;i<300;i++){const c=k[1],a=c.querySelector('.art');if(artIO)artIO.unobserve(a);c.remove()}
 for(let j=0;j<3;j++){sh+=y0-keep.getBoundingClientRect().top;spacer.style.height=Math.max(sh,0)+'px'}}
-function reset(){const tok=++St.gen;St.cur='1';St.queue=[];St.busy=false;St.want=false;sent=null;if(sentIO)sentIO.disconnect();grid.innerHTML='';spacer.hidden=true;spacer.style.height='0';grid.appendChild(spacer);
+function reset(){const tok=++St.gen;St.cur='1';St.queue=[];St.busy=false;St.want=false;St.dry=false;sent=null;if(sentIO)sentIO.disconnect();grid.innerHTML='';spacer.hidden=true;spacer.style.height='0';grid.appendChild(spacer);
 scan(360,tok).then(b=>{if(!b)return;if(!b.length){grid.insertAdjacentHTML('beforeend','<p class="none">No being matched in this stretch of reality. Loosen a filter or change the search.</p>');return}render(b);idle(()=>prefill(tok))})}
-if(!hasIO)window.addEventListener('scroll',(()=>{let t=0;return()=>{if(t)return;t=requestAnimationFrame(()=>{t=0;if(sent&&sent.getBoundingClientRect().top<innerHeight+700){sent=null;flush()}})}})(),{passive:true});
+/* reliable trigger: whenever the end of the list is within ~5 screens, make sure the next batch is attached */
+function check(){try{if(St.dry||!grid.querySelector('.card'))return;
+if(sent&&sent.getBoundingClientRect().top<innerHeight+700){sent=null;if(sentIO)sentIO.disconnect();flush();return}
+if(grid.getBoundingClientRect().bottom<innerHeight*5)flush()}catch(e){}}
+let raf=0;const onScroll=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;check()})};
+window.addEventListener('scroll',onScroll,{passive:true});window.addEventListener('resize',onScroll,{passive:true});window.addEventListener('touchmove',onScroll,{passive:true});
+setInterval(()=>{if(!document.hidden)check()},600);
 /* detail view: ?id=<decimal> (also #id=...) */
 function show(id){const p=profile(id),pv=dec(id),nx=inc(id);
 const rel=related(id).map(x=>{const q=profile(x);return'<a class="rel" href="?id='+x+'" data-go="'+x+'"><b>'+q.name+'</b><div class="idc">'+x+'</div><i>'+q.type+'</i></a>'}).join('');
